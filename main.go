@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strconv"
-	"strings"
 )
 
 func main() {
@@ -25,40 +25,99 @@ const (
 	endSim = "└───"
 )
 
-func dirTree(out *os.File, path string, files bool) interface{} {
-	_, err := out.WriteString(simDir + "project\n")
-	if err != nil {
-		panic(err)
-	}
-
-	err = printDir(out, path, 1)
+func dirTree(out io.Writer, path string, files bool) interface{} {
+	err := printDir(out, path, "", files)
 	if err != nil {
 		panic(err)
 	}
 	return nil
 }
 
-func printDir(out *os.File, path string, cntSpaces int) error {
+//func getDirFiles(out *os.File, prefix, pwd string, printFiles bool) {
+//	files, err := ioutil.ReadDir(pwd)
+//	if err != nil {
+//		fmt.Println("Panic happend:", err)
+//	}
+//	if !printFiles {
+//		printOnlyDir := []os.FileInfo{}
+//		for _, file := range files {
+//			if file.IsDir() {
+//				printOnlyDir = append(printOnlyDir, file)
+//			}
+//		}
+//		files = printOnlyDir
+//	}
+//	length := len(files)
+//	for i, file := range files {
+//		if file.Name()[0] == '.' {
+//			continue
+//		} else if file.IsDir() {
+//			var prefixNew string
+//			if length > i+1 {
+//				fmt.Fprintf(out, prefix+"├───%s\n", file.Name())
+//				prefixNew = prefix + "│\t"
+//			} else {
+//				fmt.Fprintf(out, prefix+"└───%s\n", file.Name())
+//				prefixNew = prefix + "\t"
+//			}
+//			getDirFiles(out, prefixNew, filepath.Join(pwd, file.Name()), printFiles)
+//		} else if printFiles {
+//			if file.Size() > 0 {
+//				if length > i+1 {
+//					fmt.Fprintf(out, prefix+"├───%s (%vb)\n", file.Name(), file.Size())
+//				} else {
+//					fmt.Fprintf(out, prefix+"└───%s (%vb)\n", file.Name(), file.Size())
+//				}
+//			} else {
+//				if length > i+1 {
+//					fmt.Fprintf(out, prefix+"├───%s (empty)\n", file.Name())
+//				} else {
+//					fmt.Fprintf(out, prefix+"└───%s (empty)\n", file.Name())
+//				}
+//			}
+//		}
+//	}
+//}
+
+func printDir(out io.Writer, path, prefix string, printFiles bool) error {
 	f, err := os.ReadDir(path)
 	if err != nil {
 		return err
 	}
 
+	if !printFiles {
+		onlyDir := []os.DirEntry{}
+		for _, dir := range f {
+			if dir.IsDir() {
+				onlyDir = append(onlyDir, dir)
+			}
+		}
+		f = onlyDir
+	}
+
+	length := len(f)
 	for i, file := range f {
 		if file.Name()[0] == '.' {
 			continue
 		}
-		spaces := strings.Repeat("│"+"   ", cntSpaces)
-
-		if i == len(f)-1 {
-			_, err = out.WriteString(spaces + endSim + file.Name())
-		} else {
-			_, err = out.WriteString(spaces + simDir + file.Name())
-		}
 
 		if file.IsDir() {
-			out.WriteString("\n")
-			err = printDir(out, path+"/"+file.Name(), cntSpaces+1)
+			var newPrefix string
+			if i == length-1 {
+				_, err = fmt.Fprintf(out, prefix+endSim+"%s\n", file.Name())
+				newPrefix = prefix + "\t"
+				if err != nil {
+					return err
+				}
+			} else {
+				_, err = fmt.Fprintf(out, prefix+simDir+"%s\n", file.Name())
+				newPrefix = prefix + "│\t"
+				if err != nil {
+					return err
+				}
+			}
+
+			err = printDir(out, path+"/"+file.Name(), newPrefix, printFiles)
 			if err != nil {
 				return err
 			}
@@ -69,10 +128,18 @@ func printDir(out *os.File, path string, cntSpaces int) error {
 			}
 
 			size := strconv.Itoa(int(info.Size())) + "b"
-			if size == "0b" {
+			if info.Size() == 0 {
 				size = "empty"
 			}
-			out.WriteString(fmt.Sprintf(" (%s)\n", size))
+
+			if i != length-1 {
+				_, err = fmt.Fprintf(out, "%s%s (%s)\n", prefix+simDir, file.Name(), size)
+			} else {
+				_, err = fmt.Fprintf(out, "%s%s (%s)\n", prefix+endSim, file.Name(), size)
+			}
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
